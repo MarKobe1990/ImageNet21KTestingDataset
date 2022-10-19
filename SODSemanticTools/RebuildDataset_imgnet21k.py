@@ -79,30 +79,48 @@ def mask_object_count_and_ratio(gt_path):
 
 def input_tensor_to_labels(tensor, model, semantic_softmax_processor):
     labels = []
+    all_labels_and_prob = {}
     labels_top1_prob = []
     labels_and_prob = {}
     with torch.no_grad():
         logits = model(tensor)
         semantic_logit_list = semantic_softmax_processor.split_logits_to_semantic_logits(logits)
-
         # scanning hirarchy_level_list
         for i in range(len(semantic_logit_list)):
             logits_i = semantic_logit_list[i]
-
             # generate probs
             probabilities = torch.nn.functional.softmax(logits_i[0], dim=0)
             top1_prob, top1_id = torch.topk(probabilities, 1)
 
-            if top1_prob > 0.1:
-                top_class_number = semantic_softmax_processor.hierarchy_indices_list[i][top1_id[0]]
-                top_class_name = semantic_softmax_processor.tree['class_list'][top_class_number]
-                top_class_description = semantic_softmax_processor.tree['class_description'][top_class_name]
+            top_class_number = semantic_softmax_processor.hierarchy_indices_list[i][top1_id[0]]
+            top_class_name = semantic_softmax_processor.tree['class_list'][top_class_number]
+            top_class_description = semantic_softmax_processor.tree['class_description'][top_class_name]
+            # record all
+            if top1_prob > 0.1 and top1_prob <= 0.5:
+                top1_prob_float = float(top1_prob).__round__(5)
+                all_labels_and_prob[top_class_description] = top1_prob_float
+            if top1_prob > 0.5:
                 labels.append(top_class_description)
                 top1_prob_float = float(top1_prob).__round__(5)
                 labels_and_prob[top_class_description] = top1_prob_float
                 labels_top1_prob.append(top1_prob_float)
-    labels_top1_prob_sorted_list = sorted(labels_and_prob.items(), key=lambda x: x[1])
-    return labels, labels_top1_prob, dict(labels_top1_prob_sorted_list)
+    if labels_and_prob.__len__() > 0:
+        labels_top1_prob_sorted_list = sorted(labels_and_prob.items(), key=lambda x: x[1], reverse=True)
+        result_dic = dict(labels_top1_prob_sorted_list)
+        degree_of_confidence = 'high'
+    else:
+        degree_of_confidence = 'low'
+        all_labels_top1_prob_sorted_list = sorted(all_labels_and_prob.items(), key=lambda x: x[1], reverse=True)
+        if len(all_labels_top1_prob_sorted_list) > 1:
+            result_dic = dict(all_labels_top1_prob_sorted_list[-2::])
+            for key, value in result_dic.items():
+                labels.append(key)
+                labels_top1_prob.append(value)
+        else:
+            result_dic = dict(all_labels_top1_prob_sorted_list)
+            labels.append(list(result_dic.keys())[0])
+            labels_top1_prob.append(list(result_dic.values())[0])
+    return labels, labels_top1_prob, result_dic, degree_of_confidence
 
 
 def rebuild_masked_dataset(dataset_dic, model, semantic_softmax_processor):
@@ -147,39 +165,43 @@ def rebuild_masked_dataset(dataset_dic, model, semantic_softmax_processor):
         masked_img = Image.open(img_resize_salient_object_path).convert('RGB')
         masked_tensor = transform(masked_img).unsqueeze(0)
         #处理原图像
-        origin_labels, origin_labels_top1_prob, origin_labels_and_prob = input_tensor_to_labels(origin_tensor, model, semantic_softmax_processor)
-        masked_labels, masked_labels_top1_prob, masked_labels_and_prob = input_tensor_to_labels(masked_tensor, model, semantic_softmax_processor)
-        top_class_result_origin = origin_labels_and_prob.popitem()
-        top_class_result_masked = masked_labels_and_prob.popitem()
-        if top_class_result_origin[0] == top_class_result_masked[0]:
+        origin_labels, origin_labels_top1_prob, origin_labels_and_prob, origin_degree_of_confidence = input_tensor_to_labels(origin_tensor, model, semantic_softmax_processor)
+        masked_labels, masked_labels_top1_prob, masked_labels_and_prob, masked_degree_of_confidence = input_tensor_to_labels(masked_tensor, model, semantic_softmax_processor)
+        if list(origin_labels_and_prob.keys())[0] == list(masked_labels_and_prob.keys())[0]:
             same_flag = 'T'
         else:
             same_flag = 'F'
         hparam_dic = {
             "file_pth": image_path,
-            "pred_class": origin_labels.__str__(),
-            "pred_score": origin_labels_top1_prob.__str__(),
-            "pred_class_salient_object": masked_labels.__str__(),
-            "pred_score_salient_object": masked_labels_top1_prob.__str__(),
-            "same_flag": same_flag
+            "pred_class": list(origin_labels_and_prob.keys()).__str__(),
+            "pred_score": list(origin_labels_and_prob.values()).__str__(),
+            "pred_class_salient_object": list(masked_labels_and_prob.keys()).__str__(),
+            "pred_score_salient_object": list(masked_labels_and_prob.values()).__str__(),
+            "same_flag": same_flag,
+            'origin_degree_of_confidence': origin_degree_of_confidence,
+            'masked_degree_of_confidence': masked_degree_of_confidence
         }
         metric_dic = {
             "object_count": retval - 1,
             "object_ratio": ratio_object
         }
-
-        build_tree(top_class_result_masked[0], word_tree, image_path, error_list)
-
+        if len(masked_labels_and_prob) > 1:
+            if list(masked_labels_and_prob.keys())[0] != 'artifact':
+                build_tree(list(masked_labels_and_prob.keys())[0], word_tree, image_path, error_list)
+            else:
+                build_tree(list(masked_labels_and_prob.keys())[1], word_tree, image_path, error_list)
+        else:
+            build_tree(list(masked_labels_and_prob.keys())[0], word_tree, image_path, error_list)
         dataset_writer.add_hparams(hparam_dic, metric_dic, name='log/' + image_path)
         merge_img_list = [image_path,
                           depth_path,
                           gt_path,
                           img_mask_origin_path]
         tag_dic = {
-            'class_name': top_class_result_origin[0],
-            'pred_socre': top_class_result_origin[1],
-            'ob_class_name': top_class_result_masked[0],
-            'ob_pred_socre': top_class_result_masked[1],
+            'class_name': list(origin_labels_and_prob.keys()).__str__().strip('[').strip(']'),
+            'pred_socre': list(origin_labels_and_prob.values()).__str__().strip('[').strip(']'),
+            'ob_class_name': list(masked_labels_and_prob.keys()).__str__().strip('[').strip(']'),
+            'ob_pred_socre': list(masked_labels_and_prob.values()).__str__().strip('[').strip(']'),
             'object_ratio': ratio_object,
             'object_count': retval - 1,
             'same_flag': same_flag,
@@ -195,8 +217,10 @@ def rebuild_masked_dataset(dataset_dic, model, semantic_softmax_processor):
         logger = open(log_file_loc, 'w')
         # 写入测试
         logger.write(error_list.__str__() + "\n")
+        logger.write(word_tree.to_dict(with_data=True).__str__())
     logger.flush()
     word_tree.save2file(save_dir + '/tree_note_count.txt', data_property='count')
+    word_tree.save2file(save_dir + '/tree_note_files_path_list.txt', data_property='files_path_list')
     word_tree.save2file(save_dir + '/tree_note.txt')
     word_tree.to_graphviz(filename=save_dir + '/tree_graphviz')
 
@@ -240,7 +264,5 @@ if __name__ == '__main__':
         'dataset_name': 'come15k_test_hard'
     }
     model, semantic_softmax_processor = init_my_model(metadata_file, checkpoint_file)
-    # 标注图像类型
-    # rebuild_dataset(dataset_dic_train, model)
     # 切割图像类型并标注类型和显著图像占比
     rebuild_masked_dataset(dataset_dic_train, model, semantic_softmax_processor)
