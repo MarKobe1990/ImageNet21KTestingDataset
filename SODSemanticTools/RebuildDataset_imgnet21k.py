@@ -31,6 +31,7 @@ def init_my_model(metadata_file, checkpoint_file):
     semantic_softmax_processor = ImageNet21kSemanticSoftmax(args)
     model = timm.create_model('vit_base_patch16_224_miil_in21k', pretrained=False, checkpoint_path=checkpoint_file)
     model.eval()
+    model.cuda()
     return model, semantic_softmax_processor
 
 
@@ -160,10 +161,10 @@ def rebuild_masked_dataset(dataset_dic, model, semantic_softmax_processor):
         cv2.imwrite(img_resize_salient_object_path, img_copy_resize)
         # 原图像的结果
         origin_img = Image.open(image_path).convert('RGB')
-        origin_tensor = transform(origin_img).unsqueeze(0)
+        origin_tensor = transform(origin_img).unsqueeze(0).cuda()
         # 切割后的
         masked_img = Image.open(img_resize_salient_object_path).convert('RGB')
-        masked_tensor = transform(masked_img).unsqueeze(0)
+        masked_tensor = transform(masked_img).unsqueeze(0).cuda()
         #处理原图像
         origin_labels, origin_labels_top1_prob, origin_labels_and_prob, origin_degree_of_confidence = input_tensor_to_labels(origin_tensor, model, semantic_softmax_processor)
         masked_labels, masked_labels_top1_prob, masked_labels_and_prob, masked_degree_of_confidence = input_tensor_to_labels(masked_tensor, model, semantic_softmax_processor)
