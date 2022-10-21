@@ -1,3 +1,5 @@
+import pickle
+
 import nltk
 from nltk.corpus import wordnet as wn
 from nltk.corpus.reader import Synset
@@ -60,9 +62,15 @@ def build_tree(input_words, tree, file_path, error_list):
 
 
 if __name__ == '__main__':
-    result_list2 = get_object_hypernym_paths()
-    path_result_list = get_object_hypernym_paths("neck_brace")
+    # result_list2 = get_object_hypernym_paths()
+    # path_result_list = get_object_hypernym_paths("neck_brace")
     tree = Tree()
-    build_tree("penis", tree, '../123455')
+    build_tree("penis", tree, '../123455', '')
     # build_tree(tree, result_list2, '../1235')
+    fn = 'wordTree.pkl'
+    with open(fn, 'wb') as f:
+        pickle.dump(tree, f)
     tree.show(data_property="files_path_list")
+    with open(fn, 'rb') as f:
+        model = pickle.load(f)
+    print(type(model))

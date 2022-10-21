@@ -20,6 +20,7 @@ from SODSemanticTools.WordNetTool import build_tree, get_object_hypernym_paths
 import myTools.imageUtil as utils
 import os.path as osp
 import os
+import pickle
 
 from src_files.semantic.semantics import ImageNet21kSemanticSoftmax
 
@@ -221,9 +222,10 @@ def rebuild_masked_dataset(dataset_dic, model, semantic_softmax_processor):
         logger.write(word_tree.to_dict(with_data=True).__str__())
     logger.flush()
     word_tree.save2file(save_dir + '/tree_note_count.txt', data_property='count')
-    word_tree.save2file(save_dir + '/tree_note_files_path_list.txt', data_property='files_path_list')
     word_tree.save2file(save_dir + '/tree_note.txt')
     word_tree.to_graphviz(filename=save_dir + '/tree_graphviz')
+    with open(save_dir + '/wordTree.pkl', 'wb') as f:
+        pickle.dump(word_tree, f)
 
 
 
@@ -266,4 +268,4 @@ if __name__ == '__main__':
     }
     model, semantic_softmax_processor = init_my_model(metadata_file, checkpoint_file)
     # 切割图像类型并标注类型和显著图像占比
-    rebuild_masked_dataset(dataset_dic_train, model, semantic_softmax_processor)
+    rebuild_masked_dataset(dataset_dic_test_h, model, semantic_softmax_processor)
