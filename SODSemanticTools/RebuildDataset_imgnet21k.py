@@ -98,7 +98,7 @@ def input_tensor_to_labels(tensor, model, semantic_softmax_processor):
             top_class_name = semantic_softmax_processor.tree['class_list'][top_class_number]
             top_class_description = semantic_softmax_processor.tree['class_description'][top_class_name]
             # record all
-            if top1_prob > 0.1 and top1_prob <= 0.5:
+            if top1_prob > 0.05 and top1_prob <= 0.5:
                 top1_prob_float = float(top1_prob).__round__(5)
                 all_labels_and_prob[top_class_description] = top1_prob_float
             if top1_prob > 0.5:
@@ -233,7 +233,7 @@ if __name__ == '__main__':
     # conformer
     metadata_file = '../myDocument/imagenet21k_miil_tree.pth'
     # 权重文件参数路径
-    checkpoint_file = '../checkpoints/vit_base_patch16_224_miil_21k.pth'
+    checkpoint_file = '../checkpoints/vit_base_patch16_224_in21k_miil-887286df.pth'
 
     dataset_dic_train = {
         'image_root': '../data/COME15K/train/imgs_right/',
@@ -268,4 +268,4 @@ if __name__ == '__main__':
     }
     model, semantic_softmax_processor = init_my_model(metadata_file, checkpoint_file)
     # 切割图像类型并标注类型和显著图像占比
-    rebuild_masked_dataset(dataset_dic_test_h, model, semantic_softmax_processor)
+    rebuild_masked_dataset(dataset_dic_train, model, semantic_softmax_processor)
